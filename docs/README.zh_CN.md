@@ -203,6 +203,7 @@ LICENSE                  仓库许可证
 | [AI 技能](../skills/README.zh_CN.md) | 开发、环境准备、构建、真机测试与故障诊断 |
 | [硬件资料](hardware-design/README.zh_CN.md) | 板卡事实、接口边界、验收清单与排障 |
 | [中文字体](development/engineering/lvgl-chinese-fonts.zh_CN.md) | 字形覆盖、控件字体选择，以及中文空白排查 |
+| [zcode-pet 伴宠](zcode-pet.zh_CN.md) | 桌面宠物派生玩法：BLE GATT 桥接协议、ZPF1 帧包、闭集文案、按键与构建流程 |
 | [Wi-Fi 配网](development/engineering/wifi-provisioning.zh_CN.md) | 蓝牙配网实现参考与配套小程序 |
 | [社区作品与经验](reference/README.zh_CN.md) | `docs/reference/<username>/` 下的应用档案和可复用知识 |
 | [参与贡献](contribution/README.zh_CN.md) | 文档、提交与 Pull Request 约定 |
