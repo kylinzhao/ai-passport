@@ -39,3 +39,19 @@
 - 与当前 BSP 音频路径匹配时优先采用 16 kHz、16 位单声道 PCM。
 - 嵌入音频前评估 Flash 与内部 RAM 成本；长录音应流式或分块。
 - 无再分发许可不提交媒体文件。
+
+<!-- zcode-pet device assets:begin -->
+### zcode-pet 设备资产（由 `scripts/gen_device_assets.sh` 生成，勿手改）
+
+| 文件 | 内容与来源 |
+| --- | --- |
+| [`../main/assets/pet/`](../main/assets/pet)（12 个 `.zpf`） | 由 zcode-pet 仓库的桌面宠物矢量引擎离线烘焙（`--export-esp32`）的动画帧包；ZPF1 格式：16 色 RGB565 固定调色板 + 1bpp 透明掩码 RLE + 4bpp 索引，118×76 @ 8fps，设备端 2× 上采样；零手绘贴图 |
+| [`../main/zcp_strings.c`](../main/zcp_strings.c) | 闭集中文文案表（sync 区 mid + 设备区 mid 与具名符号），生成自 `zcode-pet/scripts/device_strings.txt` 两节全文 |
+| [`fonts/zcp_font_16.c`](fonts/zcp_font_16.c) | 16px 中文子集字体；`lv_font_conv` 1.5.3（`--size 16 --bpp 4 --format lvgl --no-compress --lv-font-name zcp_font_16 --lv-include lvgl.h`）；码点 = device_strings.txt 两节全文 + ASCII 可打印集（共 163 码点）；字体源：Noto Sans CJK SC Regular（思源黑体同源，SIL OFL 1.1，允许再分发）；经 `main/CMakeLists.txt` 的 `target_sources` 引用，运行期数字模板由 `lv_font_montserrat_14` fallback 渲染 |
+
+| [`fonts/zcp_font_16.codepoints.txt`](fonts/zcp_font_16.codepoints.txt) | Registered codepoint set of `zcp_font_16.c` (registration baseline for the `build_pet.sh` coverage check: string codepoints ⊆ registration ∪ printable ASCII); regenerated together with the font by `scripts/gen_device_assets.sh` |
+
+- 宠物画布底色常量：`#1A1A1A`（RGB565 `0x18C3`）——半透明像素烘焙时向它压平，宠物页底色必须同色（见 `main/zcp_mirror.h` 的 `ZCP_BG_HEX`）。
+- 新增/改动文案：改 `zcode-pet/scripts/device_strings.txt` 后重跑 `scripts/gen_device_assets.sh`；字符白名单与桌面同步断言在 zcode-pet 仓库的 `scripts/check_esp32_bridge.sh`。
+- 再生成依赖：macOS `swiftc`、`lv_font_conv`（`npm install -g lv_font_conv`）、经 `FONT_TTF` 指定的中文 TTF（默认 `~/.zcode-pet/fonts/NotoSansCJKsc-Regular.otf`）。
+<!-- zcode-pet device assets:end -->
