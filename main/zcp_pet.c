@@ -131,20 +131,24 @@ void zcp_pet_init(lv_obj_t *parent) {
         return;
     }
     memset(&s_img_dsc, 0, sizeof(s_img_dsc));
-    // LVGL 9 图片头第一个字段是 magic（0x19）：缺失时解码器把 cf 当 UNKNOWN，
-    // lv_image 整个静默不渲染（真机排障的真凶，勿删）
+    // LVGL 9 图片头三件套，缺一个都被静默拒绝（真机排障三天换来的，勿删）：
+    // 1) magic=0x19：缺失 → cf 被当 UNKNOWN，不渲染
+    // 2) data_size：缺失（=0）→ lv_draw_buf_init 校验 stride*h>data_size 失败，
+    //    解码器 open 拒开，"Failed to open image" 连日志都看不到
     s_img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
     s_img_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
     s_img_dsc.header.w = PET_W;
     s_img_dsc.header.h = PET_H;
     s_img_dsc.header.stride = PET_W * 2;
     s_img_dsc.data = (const uint8_t *)s_up;
+    s_img_dsc.data_size = sizeof(s_up);
 
     (void)decode_and_show();
 
     s_img = lv_image_create(parent);
     lv_image_set_src(s_img, &s_img_dsc);
     lv_obj_set_pos(s_img, (BSP_LCD_W - PET_W) / 2, 64);
+    lv_obj_set_size(s_img, PET_W, PET_H);
 }
 
 void zcp_pet_set_clip(int clip_id) {
