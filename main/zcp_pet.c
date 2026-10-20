@@ -1,7 +1,7 @@
 // main/zcp_pet.c —— 帧播放器实现（LVGL 9.5 正统管线）。
 //
 // 内存设计：ZPF1 半分辨率帧（118×76）解码后以 2× 最近邻展开进一块静态 RGB565
-// 缓冲（236×152，约 70KB 内部 RAM），作为 LV_IMAGE_SRC_VARIABLE 喂给 lv_image；
+// 缓冲（236×196，约 92KB 内部 RAM），作为 LV_IMAGE_SRC_VARIABLE 喂给 lv_image；
 // 透明像素直接填压平底色 ZCP_BG_HEX 的 RGB565（0x18C3）——页面底色同色，视觉等价
 // 于透明。LVGL 9.5 的绘制走任务队列（DRAW_MAIN 事件里直写像素会被先入队的底色
 // 任务覆盖），所以必须走 image draw task：分块渲染缓冲（BSP 单缓冲 40 行）由
@@ -71,7 +71,7 @@ static const struct {
 
 static lv_obj_t *s_img;
 static zcp_zpf_t s_zpf;                              // 当前 clip
-static zcp_zpf_frame_t s_frame;                      // 当前帧解码结果（约 40KB 静态）
+static zcp_zpf_frame_t s_frame;                      // 当前帧解码结果（约 52KB 静态）
 static uint16_t s_up[PET_W * PET_H];                 // 2× 上采样 RGB565（约 70KB 静态）
 static lv_image_dsc_t s_img_dsc;
 static uint16_t s_frame_idx;

@@ -337,9 +337,9 @@ void zcp_app_start(void) {
     lv_obj_set_size(s_pet_box, BSP_LCD_W, BSP_LCD_H);
     s_topbar = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 8, lv_color_hex(COL_DIM), &s_font_cjk);
     zcp_pet_init(s_pet_box);
-    s_caption = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 228, lv_color_hex(COL_INK), &s_font_cjk);
-    s_subline = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 256, lv_color_hex(COL_DIM), &s_font_cjk);
-    s_diag = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 280, lv_color_hex(COL_ACCENT), &s_font_cjk);
+    s_caption = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 246, lv_color_hex(COL_INK), &s_font_cjk);
+    s_subline = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 274, lv_color_hex(COL_DIM), &s_font_cjk);
+    s_diag = make_label(s_pet_box, LV_ALIGN_TOP_MID, 0, 298, lv_color_hex(COL_ACCENT), &s_font_cjk);
     lv_obj_add_flag(s_pet_box, LV_OBJ_FLAG_HIDDEN);
 
     // About 页

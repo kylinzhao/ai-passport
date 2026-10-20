@@ -6,14 +6,14 @@
 //   偏移 4  : fps (u8)                     —— 8
 //   偏移 5  : 保留 (u8) = 0
 //   偏移 6  : width (u16 LE)               —— 236
-//   偏移 8  : height (u16 LE)              —— 152
+//   偏移 8  : height (u16 LE)              —— 196
 //   偏移 10 : frameCount (u16 LE)
 //   偏移 12 : 调色板 32 × RGB565 (u16 LE)；index 0 = 透明占位（不出现在索引流），
 //             index 31 = 压平底色 #1A1A1A（设备宠物页底色必须同色）
 //   偏移 76 : 逐帧数据：u32 payloadLen (LE) + payload：
 //               掩码 RLE（u8：bit7=不透明值，bit6..0=游程-1，游程覆盖 W×H 全部像素，
 //               行优先自顶向下）+ 不透明像素 8bpp 调色板索引流（行优先，每像素 1 字节）。
-//   全分辨率 236×152 直出（设备端 1:1 blit 上屏，无上采样）；烘焙端量化带 Bayer 抖动。
+//   全分辨率 236×196 直出（设备端 1:1 blit 上屏，无上采样），烘焙端带 1.25× 居中变焦；量化带 Bayer 抖动。
 #pragma once
 
 #include <stdbool.h>
@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 #define ZCP_ZPF_WIDTH 236
-#define ZCP_ZPF_HEIGHT 152
+#define ZCP_ZPF_HEIGHT 196
 #define ZCP_ZPF_FPS 8
 #define ZCP_ZPF_MAX_FRAMES 512
 
