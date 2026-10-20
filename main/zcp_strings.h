@@ -34,6 +34,10 @@ extern const char *zcp_str_detail_hint;
 extern const char *zcp_str_go_sent;
 extern const char *zcp_str_read_ok;
 extern const char *zcp_str_unread_mark;
+extern const char *zcp_str_skin_fmt;
+extern const char *zcp_str_skin_0;
+extern const char *zcp_str_skin_1;
+extern const char *zcp_str_about_hint2;
 
 #ifdef __cplusplus
 }

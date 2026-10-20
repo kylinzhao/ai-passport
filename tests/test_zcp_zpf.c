@@ -14,7 +14,7 @@
 static const struct {
     const char *file;
     int frames;
-} k_clips[ZCP_CLIP_COUNT] = {
+} k_clips[] = {
     { "main/assets/pet/ball-idle.zpf", 48 },
     { "main/assets/pet/ball-drowsy.zpf", 36 },
     { "main/assets/pet/ball-deep.zpf", 36 },
@@ -27,7 +27,30 @@ static const struct {
     { "main/assets/pet/ball-perk.zpf", 8 },
     { "main/assets/pet/ball-aftermath.zpf", 32 },
     { "main/assets/pet/ball-wait.zpf", 32 },
+    { "main/assets/pet/ghost-idle.zpf", 48 },
+    { "main/assets/pet/ghost-drowsy.zpf", 36 },
+    { "main/assets/pet/ghost-deep.zpf", 36 },
+    { "main/assets/pet/ghost-working1.zpf", 32 },
+    { "main/assets/pet/ghost-working2.zpf", 32 },
+    { "main/assets/pet/ghost-working3.zpf", 32 },
+    { "main/assets/pet/ghost-celebrate.zpf", 20 },
+    { "main/assets/pet/ghost-error.zpf", 24 },
+    { "main/assets/pet/ghost-pat.zpf", 16 },
+    { "main/assets/pet/ghost-perk.zpf", 8 },
+    { "main/assets/pet/ghost-aftermath.zpf", 32 },
+    { "main/assets/pet/ghost-wait.zpf", 32 },
 };
+#define CLIPS_UNDER_TEST ((int)(sizeof(k_clips) / sizeof(k_clips[0])))
+
+// 主机侧整块 inflate（zlib）
+#include <zlib.h>
+static int host_inflate(uint8_t *dst, size_t dst_cap, const uint8_t *src,
+                        size_t src_len, size_t *out_len) {
+    uLongf cap = dst_cap;
+    if (uncompress(dst, &cap, src, src_len) != Z_OK) return -1;
+    *out_len = cap;
+    return 0;
+}
 
 static uint8_t *read_file(const char *path, size_t *size) {
     FILE *f = fopen(path, "rb");
@@ -53,22 +76,22 @@ static void test_clip(int clip) {
     assert(z.frames == k_clips[clip].frames);
     assert(z.palette[0] == 0 || z.palette[0] != 0);   // index0 占位值不约束，解码器不产出它
 
-    // 直渲断言：每帧渲进临时缓冲（宿主机堆），可见像素必须是调色板色，其余=bg 哨兵
-    uint16_t *px = malloc(sizeof(uint16_t) * ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT);
+    // RGB565 直渲断言：透明=哨兵 bg，可见像素必须命中调色板 1..31，且每帧有内容
+    uint16_t *px = malloc(sizeof(uint16_t) * (size_t)ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT);
     assert(px);
-    const uint16_t bg_sentinel = 0xFFFF;
+    const uint16_t sentinel = 0xFFFF;
     for (uint16_t f = 0; f < z.frames; f++) {
-        assert(zcp_zpf_render_frame(&z, f, px, bg_sentinel) == 0);
+        assert(zcp_zpf_render_frame(&z, f, px, sentinel) == 0);
         unsigned opaque = 0;
         for (size_t i = 0; i < (size_t)ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT; i++) {
             uint16_t v = px[i];
-            if (v == bg_sentinel) continue;
+            if (v == sentinel) continue;
             opaque++;
-            bool in_palette = false;                   // 必须命中调色板 1..31
-            for (int c = 1; c < 32 && !in_palette; c++) in_palette = z.palette[c] == v;
-            assert(in_palette);
+            bool hit = false;
+            for (int c = 1; c < 32 && !hit; c++) hit = z.palette[c] == v;
+            assert(hit);
         }
-        assert(opaque > 0);                            // 每帧都有可见内容
+        assert(opaque > 0);
     }
     free(px);
 
@@ -78,14 +101,15 @@ static void test_clip(int clip) {
     // 截断/帧号越界的负例
     int rc = zcp_zpf_open(&zt, data, 30);              // 小于头+调色板
     assert(rc != 0);
-    rc = zcp_zpf_render_frame(&z, z.frames, px, bg_sentinel);  // 帧号越界
+    rc = zcp_zpf_render_frame(&z, z.frames, px, 0);  // 帧号越界
     assert(rc != 0);
 
     free(data);
 }
 
 int main(void) {
-    for (int c = 0; c < ZCP_CLIP_COUNT; c++) {
+    zcp_zpf_set_inflate(host_inflate);
+    for (int c = 0; c < CLIPS_UNDER_TEST; c++) {
         test_clip(c);
     }
     printf("test_zcp_zpf: PASS (12 clips, all frames decoded)\n");

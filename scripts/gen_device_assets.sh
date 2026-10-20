@@ -41,10 +41,12 @@ trap 'rm -rf "$TMP"' EXIT
 # 编译清单 = daemon/build.sh 与 scripts/install.sh 的同一清单（DeviceBridge.swift，
 # BLE 桥接；check_esp32_bridge.sh [1/4] 校验同一等价性）
 swiftc -O "$ZCODE_PET_ROOT/daemon/main.swift" "$ZCODE_PET_ROOT/daemon/DeviceBridge.swift" \
+    -lz \
     -o "$TMP/zcp-exporter"
 
-echo "== [3/5] 烘焙 .zpf 帧包 → $PET_OUT =="
-"$TMP/zcp-exporter" --export-esp32 "$PET_OUT"
+rm -f "$PET_OUT"/*.zpf   # 清旧套（皮肤清单变更后不留孤儿）
+echo "== [3/5] 烘焙 .zpf 帧包（ball+ghost）→ $PET_OUT =="
+"$TMP/zcp-exporter" --export-esp32 "$PET_OUT" --skins ball,ghost
 
 echo "== [4/5] 校验 EMBED 清单与资产一致 =="
 # 单一事实来源：直接解析 main/CMakeLists.txt 的 EMBED_FILES 显式清单
@@ -93,6 +95,10 @@ my %alias = (
     gosent       => 'go_sent',
     readok       => 'read_ok',
     unreadmark   => 'unread_mark',
+    skinfmt      => 'skin_fmt',
+    skin0        => 'skin_0',
+    skin1        => 'skin_1',
+    abouthint2   => 'about_hint2',
 );
 
 open my $in, '<', $src or die "读不到 $src: $!";
@@ -179,6 +185,10 @@ extern const char *zcp_str_detail_hint;
 extern const char *zcp_str_go_sent;
 extern const char *zcp_str_read_ok;
 extern const char *zcp_str_unread_mark;
+extern const char *zcp_str_skin_fmt;
+extern const char *zcp_str_skin_0;
+extern const char *zcp_str_skin_1;
+extern const char *zcp_str_about_hint2;
 
 #ifdef __cplusplus
 }

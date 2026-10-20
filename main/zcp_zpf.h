@@ -1,19 +1,16 @@
-// main/zcp_zpf.h —— ZPF2 帧包解码（纯 C，无 ESP-IDF/LVGL 依赖，主机可测）。
+// main/zcp_zpf.h —— ZPF4 帧包解码（纯 C；inflate 由使用方注入：固件=ROM tinfl，主机测试=zlib）。
 //
-// ZPF2 布局（小端；与烘焙端 zcode-pet daemon/main.swift Esp32Exporter 的注释契约
-// 逐字节一致，改任何字段两侧同步；ZPF1 已退役，magic 拒收）：
-//   偏移 0  : magic "ZPF2"
-//   偏移 4  : fps (u8)                     —— 8
-//   偏移 5  : 保留 (u8) = 0
-//   偏移 6  : width (u16 LE)               —— 236
-//   偏移 8  : height (u16 LE)              —— 196
-//   偏移 10 : frameCount (u16 LE)
-//   偏移 12 : 调色板 32 × RGB565 (u16 LE)；index 0 = 透明占位（不出现在索引流），
-//             index 31 = 压平底色 #1A1A1A（设备宠物页底色必须同色）
-//   偏移 76 : 逐帧数据：u32 payloadLen (LE) + payload：
-//               掩码 RLE（u8：bit7=不透明值，bit6..0=游程-1，游程覆盖 W×H 全部像素，
-//               行优先自顶向下）+ 不透明像素 8bpp 调色板索引流（行优先，每像素 1 字节）。
-//   全分辨率 236×196 直出（设备端 1:1 blit 上屏，无上采样），烘焙端带 1.25× 居中变焦；量化带 Bayer 抖动。
+// ZPF4 布局（小端；与烘焙端 zcode-pet daemon/main.swift Esp32Exporter 注释契约逐字节一致；
+// ZPF1-3 已退役，magic 拒收）：
+//   偏移 0  : magic "ZPF4"
+//   偏移 4  : fps (u8) —— 8 | 偏移 5: 保留 0
+//   偏移 6  : width/height (u16×2) —— 236×196 | 偏移 10: frameCount (u16)
+//   偏移 12 : 调色板 32×RGB565；index0 = 透明占位
+//   偏移 76 : 每帧：u32 maskRawLen | u32 maskCompLen | zlib(掩码 RLE)
+//             u8 bandCount(=8) | 每带：u32 rawLen | u32 compLen | zlib(带索引流)
+//             带边界 = 等高行带（height/8 行）；带索引只含该带不透明像素（行优先）
+//   8 行带分块使设备端静态解压缓冲仅需 4KB/带 + 2KB 掩码（ZPF3 整帧 24KB 缓冲会把
+//   BLE 挤到 3KB 堆；ZPF1/2 无压缩体积超分区）。
 #pragma once
 
 #include <stdbool.h>
@@ -29,6 +26,10 @@ extern "C" {
 #define ZCP_ZPF_FPS 8
 #define ZCP_ZPF_MAX_FRAMES 512
 
+#define ZCP_ZPF_MAX_MASK_RAW (2 * 1024)     // 掩码段解压上限（=烘焙端 maxMaskRaw）
+#define ZCP_ZPF_MAX_BAND_RAW (4 * 1024)     // 单带索引解压上限（=烘焙端 maxBandRaw）
+#define ZCP_ZPF_BANDS 8                     // 行带数（=烘焙端 bandCount）
+
 typedef struct {
     const uint8_t *data;
     size_t size;
@@ -41,11 +42,16 @@ typedef struct {
 // 校验头并解析常量字段；数据必须在全部生命周期内有效（flash 映射）。0=成功。
 int zcp_zpf_open(zcp_zpf_t *z, const uint8_t *data, size_t size);
 
-// 直渲第 frame_idx 帧进调用方提供的 RGB565 缓冲（W×H×2 字节，行优先）：
-// 不透明像素写调色板色，透明像素写 bg。跳过 mask/idx 中间结构——无 PSRAM 的 C3
-// 上省下 ~52KB 内部 RAM（2026-10-20 NimBLE gatts_init 断言排障的根治项）。
-// 游程与索引流经校验，越界/损坏数据返回非 0。0=成功。
-int zcp_zpf_render_frame(const zcp_zpf_t *z, uint16_t frame_idx, uint16_t *dst, uint16_t bg);
+// 注入式整块 inflate：zlib 流解到 ≥rawLen 的缓冲，out_len=实际长度；0=成功。
+// 固件实现必须用静态解压器（ROM tinfl 的 mem_to_mem 把 ~10KB 解压器放调用者
+// 栈上，main/LVGL 任务栈必爆——真机 Guru Stack protection fault，2026-10-20）。
+typedef int (*zcp_inflate_fn)(uint8_t *dst, size_t dst_cap, const uint8_t *src,
+                              size_t src_len, size_t *out_len);
+void zcp_zpf_set_inflate(zcp_inflate_fn fn);
+
+// 解压+直渲第 frame_idx 帧（RGB565；透明像素写 bg565，不透明写调色板色）。
+// 掩码游程与带索引经校验，失败返回非 0。0=成功。
+int zcp_zpf_render_frame(const zcp_zpf_t *z, uint16_t frame_idx, uint16_t *dst, uint16_t bg565);
 
 #ifdef __cplusplus
 }

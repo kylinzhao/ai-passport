@@ -27,6 +27,7 @@ const char *zcp_mid_text(int mid) {
 }
 
 const char *zcp_str_about_hint = "OK 重连蓝牙 · 长按返回";
+const char *zcp_str_about_hint2 = "下键换皮肤 OK 重连蓝牙";
 const char *zcp_str_about_title = "关于";
 const char *zcp_str_batt_fmt = "电量 %d%%";
 const char *zcp_str_ble_fail_fmt = "蓝牙启动失败(%d)";
@@ -37,6 +38,9 @@ const char *zcp_str_go_sent = "已在Mac打开任务";
 const char *zcp_str_list_fmt = "任务 %d · 未读 %d";
 const char *zcp_str_list_hint = "上下选择 OK详情";
 const char *zcp_str_read_ok = "已读";
+const char *zcp_str_skin_0 = "球球";
+const char *zcp_str_skin_1 = "幽幽";
+const char *zcp_str_skin_fmt = "皮肤 %s";
 const char *zcp_str_sub_fmt = "zcode-pet · %ds";
 const char *zcp_str_task_empty = "暂无任务";
 const char *zcp_str_task_st0 = "空闲";

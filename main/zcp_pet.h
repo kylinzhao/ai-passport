@@ -6,6 +6,10 @@
 #include "lvgl.h"
 #include "zcp_mirror.h"
 
+int zcp_pet_skin_count(void);
+uint8_t zcp_pet_skin(void);
+void zcp_pet_set_skin(uint8_t skin);   // 切皮肤并重载当前动画（NVS 持久化由调用方做）
+
 #ifdef __cplusplus
 extern "C" {
 #endif

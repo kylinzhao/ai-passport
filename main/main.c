@@ -17,6 +17,8 @@
 #include "bsp_pins.h"      // 错误日志里要打印 BSP_LCD_* 引脚号
 #include "key_guard.h"
 #include "zcp_app.h"
+#include "zcp_zpf.h"
+#include "miniz.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_timer.h"
@@ -25,6 +27,26 @@
 #include "freertos/task.h"
 
 static const char *TAG = "main";
+
+/// ROM tinfl 整块包装：静态解压器 + 单次 NON_WRAPPING 调用。
+/// 两个前车之鉴（2026-10-20）：mem_to_mem 把 ~10KB 解压器放调用者栈上（Guru 爆栈）；
+/// 流式 pull 的 1KB 窗口违反 tinfl 环形字典假设（解码全错）。整块+静态是正确用法。
+static tinfl_decompressor s_tinfl;
+
+static int zcp_rom_inflate(uint8_t *dst, size_t dst_cap, const uint8_t *src,
+                           size_t src_len, size_t *out_len) {
+    tinfl_init(&s_tinfl);
+    const mz_uint8 *in_next = src;
+    mz_uint8 *out_next = dst;
+    size_t in_left = src_len, out_left = dst_cap;
+    tinfl_status st = tinfl_decompress(&s_tinfl, in_next, &in_left,
+                                       dst, out_next, &out_left,
+                                       TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    // 实测（2026-10-20 真机探针）：本 ROM 的 tinfl_decompress 返回后 *pOut_buf_size
+    // 是「累计写出量」而非上游 miniz 文档暗示的剩余空间——勿改回 dst_cap - out_left。
+    *out_len = out_left;
+    return st == TINFL_STATUS_DONE ? 0 : -1;
+}
 
 #define INPUT_QUEUE_DEPTH 8
 
@@ -116,6 +138,9 @@ void app_main(void) {
         key_guard_arm(&s_key_guard, esp_timer_get_time(), KEY_GUARD_MAX_US);
         ESP_LOGI(TAG, "按键唤醒:先屏蔽按键动作,直到那颗键松手");
     }
+
+    // ZPF3 帧解压（ROM tinfl 整块，见上方包装注释）
+    zcp_zpf_set_inflate(zcp_rom_inflate);
 
     bsp_i2c_init();
 

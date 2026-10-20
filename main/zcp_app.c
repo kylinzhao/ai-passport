@@ -14,6 +14,7 @@
 // 线程约定：按键事件从 input task 进入（zcp_app_key），内部先取 LVGL 锁；状态/动画
 // 定时器运行在 LVGL 任务；zcp_bridge 的快照读取自身带锁。
 #include "zcp_app.h"
+#include "nvs_flash.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -63,7 +64,7 @@ static lv_obj_t *s_scr;
 static lv_obj_t *s_boot_box, *s_boot_title;
 static lv_obj_t *s_pet_box;
 static lv_obj_t *s_topbar, *s_caption, *s_subline, *s_diag;
-static lv_obj_t *s_about_box, *s_about_title, *s_about_name, *s_about_batt, *s_about_hint;
+static lv_obj_t *s_about_box, *s_about_title, *s_about_name, *s_about_batt, *s_about_hint, *s_about_skin;
 static lv_obj_t *s_list_box, *s_list_label;
 static lv_obj_t *s_tasks_box, *s_tasks_title, *s_tasks_rows[ZCP_TASKS_MAX], *s_tasks_hint;
 static lv_obj_t *s_detail_box, *s_detail_title, *s_detail_status, *s_detail_toast, *s_detail_hint;
@@ -81,6 +82,7 @@ static bool s_ever_online;                           // 本次开机曾收到 st
 static bool s_batt_available;                        // CW2017 在位（main.c 探测）
 
 static void refresh_about_batt(void);
+static void refresh_about_skin(void);
 static void refresh_tasks_page(void);
 static void refresh_detail_page(void);
 
@@ -321,6 +323,15 @@ static void refresh_detail_page(void) {
 
 // ---- About 页 ----
 
+static void refresh_about_skin(void) {
+    const char *names[] = { zcp_str_skin_0, zcp_str_skin_1 };
+    uint8_t sk = zcp_pet_skin();
+    char buf[48];
+    snprintf(buf, sizeof(buf), zcp_str_skin_fmt,
+             sk < zcp_pet_skin_count() ? names[sk] : "?");
+    lv_label_set_text(s_about_skin, buf);
+}
+
 static void refresh_about_batt(void) {
     if (!s_batt_available) {
         lv_label_set_text(s_about_batt, "?");
@@ -343,7 +354,12 @@ static void handle_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
 
     if (s_page == PAGE_ABOUT) {
         if (btn == BSP_BTN_UP && ev == BSP_BTN_CLICK) show_page(PAGE_PET);
-        else if (btn == BSP_BTN_DOWN && ev == BSP_BTN_CLICK) refresh_about_batt();
+        else if (btn == BSP_BTN_DOWN && ev == BSP_BTN_CLICK) {          // v1.9：换皮肤（电量已常驻顶栏）
+            uint8_t next = (uint8_t)((zcp_pet_skin() + 1) % zcp_pet_skin_count());
+            zcp_pet_set_skin(next);
+            zcp_app_save_skin(next);
+            refresh_about_skin();
+        }
         else if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) zcp_bridge_restart();
         else if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) show_page(PAGE_PET);
         return;
@@ -445,7 +461,25 @@ static lv_obj_t *make_label(lv_obj_t *parent, lv_align_t align, int x, int y,
     return l;
 }
 
+// 皮肤选择持久化（NVS 命名空间 zcp；失败不阻塞，仅下次开机回默认）
+void zcp_app_save_skin(uint8_t skin) {
+    nvs_handle_t h;
+    if (nvs_open("zcp", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_u8(h, "skin", skin);
+    nvs_commit(h);
+    nvs_close(h);
+}
+static void load_saved_skin(void) {
+    nvs_handle_t h;
+    if (nvs_open("zcp", NVS_READONLY, &h) != ESP_OK) return;
+    uint8_t sk = 0;
+    nvs_get_u8(h, "skin", &sk);
+    nvs_close(h);
+    zcp_pet_set_skin(sk);
+}
+
 void zcp_app_start(void) {
+    load_saved_skin();
     // 字体：生成的闭集子集 + Montserrat fallback（浅拷贝描述符，应用期常驻）
     s_font_cjk = zcp_font_16;
     s_font_cjk.fallback = &lv_font_montserrat_14;
@@ -488,10 +522,14 @@ void zcp_app_start(void) {
     label_style(s_about_name, lv_color_hex(COL_INK), &s_font_cjk);
     lv_label_set_text_fmt(s_about_name, "%s fw1.0", zcp_str_boot_title);
     s_about_batt = make_label(s_about_box, LV_ALIGN_TOP_MID, 0, 140, lv_color_hex(COL_INK), &s_font_cjk);
+    s_about_skin = lv_label_create(s_about_box);
+    lv_obj_align(s_about_skin, LV_ALIGN_TOP_MID, 0, 180);
+    label_style(s_about_skin, lv_color_hex(COL_INK), &s_font_cjk);
+    refresh_about_skin();
     s_about_hint = lv_label_create(s_about_box);
     lv_obj_align(s_about_hint, LV_ALIGN_TOP_MID, 0, 240);
     label_style(s_about_hint, lv_color_hex(COL_DIM), &s_font_cjk);
-    lv_label_set_text(s_about_hint, zcp_str_about_hint);
+    lv_label_set_text(s_about_hint, zcp_str_about_hint2);
     lv_obj_add_flag(s_about_box, LV_OBJ_FLAG_HIDDEN);
 
     // 任务列表页（8 行静态 label，选中行高亮橙色，未读前缀 ●）

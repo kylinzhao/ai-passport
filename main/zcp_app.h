@@ -10,6 +10,7 @@
 // BSP/LVGL 就绪后由 main.c 调用一次：建 UI、启动动画/状态定时器、拉起 BLE 桥接
 // （NimBLE 常驻广播）。内部失败（资源不足等）只记日志，不重启系统。
 void zcp_app_start(void);
+void zcp_app_save_skin(uint8_t skin);
 
 // 按键事件入口（main.c 的 input task 调用；内部自行获取/释放 LVGL 锁）。
 void zcp_app_key(bsp_btn_t btn, bsp_btn_ev_t ev);

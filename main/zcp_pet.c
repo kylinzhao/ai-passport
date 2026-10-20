@@ -51,10 +51,34 @@ extern const uint8_t ball_aftermath_zpf_end[] asm("_binary_ball_aftermath_zpf_en
 extern const uint8_t ball_wait_zpf_start[] asm("_binary_ball_wait_zpf_start");
 extern const uint8_t ball_wait_zpf_end[] asm("_binary_ball_wait_zpf_end");
 
-static const struct {
-    const uint8_t *start;
-    const uint8_t *end;
-} s_clips[ZCP_CLIP_COUNT] = {
+extern const uint8_t ghost_idle_zpf_start[] asm("_binary_ghost_idle_zpf_start");
+extern const uint8_t ghost_idle_zpf_end[] asm("_binary_ghost_idle_zpf_end");
+extern const uint8_t ghost_drowsy_zpf_start[] asm("_binary_ghost_drowsy_zpf_start");
+extern const uint8_t ghost_drowsy_zpf_end[] asm("_binary_ghost_drowsy_zpf_end");
+extern const uint8_t ghost_deep_zpf_start[] asm("_binary_ghost_deep_zpf_start");
+extern const uint8_t ghost_deep_zpf_end[] asm("_binary_ghost_deep_zpf_end");
+extern const uint8_t ghost_working1_zpf_start[] asm("_binary_ghost_working1_zpf_start");
+extern const uint8_t ghost_working1_zpf_end[] asm("_binary_ghost_working1_zpf_end");
+extern const uint8_t ghost_working2_zpf_start[] asm("_binary_ghost_working2_zpf_start");
+extern const uint8_t ghost_working2_zpf_end[] asm("_binary_ghost_working2_zpf_end");
+extern const uint8_t ghost_working3_zpf_start[] asm("_binary_ghost_working3_zpf_start");
+extern const uint8_t ghost_working3_zpf_end[] asm("_binary_ghost_working3_zpf_end");
+extern const uint8_t ghost_celebrate_zpf_start[] asm("_binary_ghost_celebrate_zpf_start");
+extern const uint8_t ghost_celebrate_zpf_end[] asm("_binary_ghost_celebrate_zpf_end");
+extern const uint8_t ghost_error_zpf_start[] asm("_binary_ghost_error_zpf_start");
+extern const uint8_t ghost_error_zpf_end[] asm("_binary_ghost_error_zpf_end");
+extern const uint8_t ghost_pat_zpf_start[] asm("_binary_ghost_pat_zpf_start");
+extern const uint8_t ghost_pat_zpf_end[] asm("_binary_ghost_pat_zpf_end");
+extern const uint8_t ghost_perk_zpf_start[] asm("_binary_ghost_perk_zpf_start");
+extern const uint8_t ghost_perk_zpf_end[] asm("_binary_ghost_perk_zpf_end");
+extern const uint8_t ghost_aftermath_zpf_start[] asm("_binary_ghost_aftermath_zpf_start");
+extern const uint8_t ghost_aftermath_zpf_end[] asm("_binary_ghost_aftermath_zpf_end");
+extern const uint8_t ghost_wait_zpf_start[] asm("_binary_ghost_wait_zpf_start");
+extern const uint8_t ghost_wait_zpf_end[] asm("_binary_ghost_wait_zpf_end");
+
+typedef struct { const uint8_t *start, *end; } zcp_blob_t;
+
+static const zcp_blob_t s_ball_clips[ZCP_CLIP_COUNT] = {
     [ZCP_CLIP_IDLE] = { ball_idle_zpf_start, ball_idle_zpf_end },
     [ZCP_CLIP_DROWSY] = { ball_drowsy_zpf_start, ball_drowsy_zpf_end },
     [ZCP_CLIP_DEEP] = { ball_deep_zpf_start, ball_deep_zpf_end },
@@ -69,9 +93,34 @@ static const struct {
     [ZCP_CLIP_WAIT] = { ball_wait_zpf_start, ball_wait_zpf_end },
 };
 
+static const zcp_blob_t s_ghost_clips[ZCP_CLIP_COUNT] = {
+    [ZCP_CLIP_IDLE] = { ghost_idle_zpf_start, ghost_idle_zpf_end },
+    [ZCP_CLIP_DROWSY] = { ghost_drowsy_zpf_start, ghost_drowsy_zpf_end },
+    [ZCP_CLIP_DEEP] = { ghost_deep_zpf_start, ghost_deep_zpf_end },
+    [ZCP_CLIP_WORKING1] = { ghost_working1_zpf_start, ghost_working1_zpf_end },
+    [ZCP_CLIP_WORKING2] = { ghost_working2_zpf_start, ghost_working2_zpf_end },
+    [ZCP_CLIP_WORKING3] = { ghost_working3_zpf_start, ghost_working3_zpf_end },
+    [ZCP_CLIP_CELEBRATE] = { ghost_celebrate_zpf_start, ghost_celebrate_zpf_end },
+    [ZCP_CLIP_ERROR] = { ghost_error_zpf_start, ghost_error_zpf_end },
+    [ZCP_CLIP_PAT] = { ghost_pat_zpf_start, ghost_pat_zpf_end },
+    [ZCP_CLIP_PERK] = { ghost_perk_zpf_start, ghost_perk_zpf_end },
+    [ZCP_CLIP_AFTERMATH] = { ghost_aftermath_zpf_start, ghost_aftermath_zpf_end },
+    [ZCP_CLIP_WAIT] = { ghost_wait_zpf_start, ghost_wait_zpf_end },
+};
+
+#define ZCP_SKIN_COUNT 2
+static const struct {
+    const zcp_blob_t *clips;
+    const char *name;
+} s_skins[ZCP_SKIN_COUNT] = {
+    { s_ball_clips, "ball" },
+    { s_ghost_clips, "ghost" },
+};
+static uint8_t s_skin;                              // 当前皮肤下标（NVS 持久化由 app 层做）
+
 static lv_obj_t *s_img;
 static zcp_zpf_t s_zpf;                              // 当前 clip
-static uint16_t s_up[PET_W * PET_H];                 // 2× 上采样 RGB565（约 70KB 静态）
+static uint16_t s_up[PET_W * PET_H];                 // RGB565 帧缓冲（约 92KB 静态）
 static lv_image_dsc_t s_img_dsc;
 static uint16_t s_frame_idx;
 static int s_clip_id = -1;
@@ -80,8 +129,9 @@ static bool s_ready;
 int zcp_pet_clip_frames(int clip_id) {
     if (clip_id < 0 || clip_id >= ZCP_CLIP_COUNT) return 0;
     zcp_zpf_t tmp;
-    const uint8_t *data = s_clips[clip_id].start;
-    size_t size = (size_t)(s_clips[clip_id].end - s_clips[clip_id].start);
+    const zcp_blob_t *tab = s_skins[s_skin].clips;
+    const uint8_t *data = tab[clip_id].start;
+    size_t size = (size_t)(tab[clip_id].end - tab[clip_id].start);
     if (zcp_zpf_open(&tmp, data, size) != 0) return 0;
     return tmp.frames;
 }
@@ -89,8 +139,8 @@ int zcp_pet_clip_frames(int clip_id) {
 static bool load_clip(int clip_id) {
     if (clip_id < 0 || clip_id >= ZCP_CLIP_COUNT) return false;
     if (clip_id == s_clip_id && s_ready) return true;
-    int rc = zcp_zpf_open(&s_zpf, s_clips[clip_id].start,
-                          (size_t)(s_clips[clip_id].end - s_clips[clip_id].start));
+    const zcp_blob_t *tab = s_skins[s_skin].clips;
+    int rc = zcp_zpf_open(&s_zpf, tab[clip_id].start, (size_t)(tab[clip_id].end - tab[clip_id].start));
     if (rc != 0) {
         ESP_LOGE(TAG, "clip %d 打开失败 rc=%d", clip_id, rc);
         s_ready = false;
@@ -103,9 +153,11 @@ static bool load_clip(int clip_id) {
 }
 
 static bool decode_and_show(void) {
-    // 直渲进 s_up（透明=压平底色）——省 52KB 中间缓冲（无 PSRAM 内存红线，2026-10-20）
-    if (zcp_zpf_render_frame(&s_zpf, s_frame_idx, s_up, BG_RGB565) != 0) {
-        ESP_LOGE(TAG, "clip %d 帧 %u 解码失败", s_clip_id, s_frame_idx);
+    // ZPF4 分带解压直渲 RGB565（透明=底色）
+    int rc = zcp_zpf_render_frame(&s_zpf, s_frame_idx, s_up, BG_RGB565);
+    if (rc != 0) {
+        static int s_logged = 0;                       // 每种 rc 只记前几次，防刷屏
+        if (s_logged++ < 8) ESP_LOGE(TAG, "clip %d 帧 %u 解码失败 rc=%d", s_clip_id, s_frame_idx, rc);
         return false;
     }
     return true;
@@ -151,4 +203,27 @@ void zcp_pet_tick(void) {
     if (decode_and_show()) {
         lv_obj_invalidate(s_img);
     }
+}
+
+
+int zcp_pet_skin_count(void) { return ZCP_SKIN_COUNT; }
+
+uint8_t zcp_pet_skin(void) { return s_skin; }
+
+/// 切皮肤：强制重载当前 clip（帧缓冲直接重渲），失败回退 0 号
+void zcp_pet_set_skin(uint8_t skin) {
+    if (skin >= ZCP_SKIN_COUNT) return;
+    if (skin == s_skin && s_ready) return;
+    int keep_clip = s_clip_id;
+    s_skin = skin;
+    s_clip_id = -1;
+    s_ready = false;
+    if (keep_clip < 0) keep_clip = ZCP_CLIP_IDLE;
+    if (!load_clip(keep_clip)) {
+        ESP_LOGE(TAG, "皮肤 %u 加载失败", skin);
+        s_skin = 0;
+        s_clip_id = -1;
+        load_clip(keep_clip);
+    }
+    if (decode_and_show()) lv_obj_invalidate(s_img);
 }

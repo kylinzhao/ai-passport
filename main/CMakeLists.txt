@@ -45,6 +45,18 @@ idf_component_register(
                 "assets/pet/ball-perk.zpf"
                 "assets/pet/ball-aftermath.zpf"
                 "assets/pet/ball-wait.zpf"
+                "assets/pet/ghost-idle.zpf"
+                "assets/pet/ghost-drowsy.zpf"
+                "assets/pet/ghost-deep.zpf"
+                "assets/pet/ghost-working1.zpf"
+                "assets/pet/ghost-working2.zpf"
+                "assets/pet/ghost-working3.zpf"
+                "assets/pet/ghost-celebrate.zpf"
+                "assets/pet/ghost-error.zpf"
+                "assets/pet/ghost-pat.zpf"
+                "assets/pet/ghost-perk.zpf"
+                "assets/pet/ghost-aftermath.zpf"
+                "assets/pet/ghost-wait.zpf"
     REQUIRES bsp bt esp_hw_support esp_timer nvs_flash json
 )
 
