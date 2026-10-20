@@ -131,6 +131,9 @@ void zcp_pet_init(lv_obj_t *parent) {
         return;
     }
     memset(&s_img_dsc, 0, sizeof(s_img_dsc));
+    // LVGL 9 图片头第一个字段是 magic（0x19）：缺失时解码器把 cf 当 UNKNOWN，
+    // lv_image 整个静默不渲染（真机排障的真凶，勿删）
+    s_img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
     s_img_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
     s_img_dsc.header.w = PET_W;
     s_img_dsc.header.h = PET_H;
