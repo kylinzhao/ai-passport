@@ -14,10 +14,10 @@ zcode-pet daemon (Mac)                     ESP32-C3 device (this firmware)
 │  (mode/tier/run/unread/mid)             │   · GATT service 5A1C0001-…, TX notify / RX write
 ├─ DeviceBridge.swift (CoreBluetooth      │   · status → mirror + ACK, 10 s watchdog
 │  central: scan → connect → subscribe)   │   · hello every 5 s; OK key → read notify
-│  · status every 2 s (write-with-        ├─ zcp_pet.c      ZPF1 decode + 2× upscale → lv_image @ 8 fps
+│  · status every 2 s (write-with-        ├─ zcp_pet.c      ZPF2 decode + 1:1 blit → lv_image @ 8 fps
 │    response, preferred MTU 256)         ├─ zcp_app.c      Boot/Pet/About pages, overlay, keys
 │  · read message → desktop read path     └─ zcp_strings.c  closed-set text table
-└─ --export-esp32 bakes ZPF1 clips (offline, committed to this repository)
+└─ --export-esp32 bakes ZPF2 clips (offline, committed to this repository)
 ```
 
 State source: the daemon's `PetDisplayState` snapshot feeds both the desktop pet caption and the BLE `status` message, so the caption on the device and on the Mac are two projections of one source. The `mid` field doubles as the animation/caption selector on the device.
@@ -55,9 +55,9 @@ The device is a NimBLE peripheral that advertises **all the time**; the Mac is t
 
 The About page shows the device name + firmware, the CW2017 battery SOC (`?` when the fuel gauge is absent), and the key hints. There is no provisioning page: BLE needs no credentials. The Config page and `zcp_provision` from the UDP draft are gone.
 
-## Animation frames (ZPF1)
+## Animation frames (ZPF2)
 
-All frames are baked offline by the desktop vector engine — no hand-drawn or AI-generated art. Twelve phase-locked loop clips (`ball-*.zpf`, 118×76 @ 8 fps, 348 frames, ≈0.32 MB) are embedded via `EMBED_FILES`, decoded and upsampled 2× into a static RGB565 buffer (236×152, ~70 KB internal RAM) rendered through an `lv_image` variable source. Format: `ZPF1` header, fixed 16-color RGB565 palette (index 0 transparent placeholder, index 15 = flatten background), per-frame `u32` length + 1bpp transparency-mask RLE + 4bpp palette indices. Semi-transparent pixels are flattened onto `#1A1A1A` (RGB565 `0x18C3`); the pet page background must use the same constant (`ZCP_BG_HEX`).
+All frames are baked offline by the desktop vector engine — no hand-drawn or AI-generated art. Twelve phase-locked loop clips (`ball-*.zpf`, 236×152 @ 8 fps, 348 frames, ≈2.3 MB) are embedded via `EMBED_FILES`, decoded and blitted 1:1 into a static RGB565 buffer (236×152, ~70 KB internal RAM) rendered through an `lv_image` variable source. Format: `ZPF2` header, fixed 32-color RGB565 palette (index 0 transparent placeholder, index 31 = flatten background), per-frame `u32` length + 1bpp transparency-mask RLE + 8bpp palette indices; bake-time quantization uses 4×4 Bayer dithering. Semi-transparent pixels are flattened onto `#1A1A1A` (RGB565 `0x18C3`); the pet page background must use the same constant (`ZCP_BG_HEX`).
 
 Known shape-level gaps (by design, semantics carried by captions): the impatient look reuses working frames with the "task has been running for a long time" caption; combo celebrations reuse the celebrate clip with the combo caption; the dangle pose has no device scenario.
 

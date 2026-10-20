@@ -1,4 +1,4 @@
-// main/zcp_zpf.c —— ZPF1 解码实现（纯 C，主机与固件共用同一份）。
+// main/zcp_zpf.c —— ZPF2 解码实现（纯 C，主机与固件共用同一份）。
 #include "zcp_zpf.h"
 
 #include <string.h>
@@ -14,8 +14,8 @@ static uint32_t rd_u32(const uint8_t *p) {
 int zcp_zpf_open(zcp_zpf_t *z, const uint8_t *data, size_t size) {
     if (!z || !data) return -1;
     memset(z, 0, sizeof(*z));
-    if (size < 44) return -2;                             // 头 + 调色板
-    if (memcmp(data, "ZPF1", 4) != 0) return -3;
+    if (size < 76) return -2;                             // 头 + 调色板
+    if (memcmp(data, "ZPF2", 4) != 0) return -3;
     z->fps = data[4];
     if (z->fps != ZCP_ZPF_FPS) return -4;
     z->w = rd_u16(data + 6);
@@ -23,7 +23,7 @@ int zcp_zpf_open(zcp_zpf_t *z, const uint8_t *data, size_t size) {
     z->frames = rd_u16(data + 10);
     if (z->w != ZCP_ZPF_WIDTH || z->h != ZCP_ZPF_HEIGHT) return -5;
     if (z->frames == 0 || z->frames > ZCP_ZPF_MAX_FRAMES) return -6;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
         z->palette[i] = rd_u16(data + 12 + i * 2);
     }
     z->data = data;
@@ -33,7 +33,7 @@ int zcp_zpf_open(zcp_zpf_t *z, const uint8_t *data, size_t size) {
 
 // 帧数据的起始偏移（u32 payloadLen 前缀）；越界返回 -2。
 static int frame_offset(const zcp_zpf_t *z, uint16_t frame_idx, size_t *offset, size_t *len) {
-    const uint8_t *p = z->data + 44;
+    const uint8_t *p = z->data + 76;
     const uint8_t *end = z->data + z->size;
     for (uint16_t f = 0; f <= frame_idx; f++) {
         if ((size_t)(end - p) < 4) return -2;
@@ -79,19 +79,11 @@ int zcp_zpf_decode_frame(const zcp_zpf_t *z, uint16_t frame_idx, zcp_zpf_frame_t
         covered += run;
     }
 
-    // 4bpp 索引流：按掩码顺序（行优先自顶向下）填给不透明像素，高 nibble 在前
-    bool lo = false;
+    // 8bpp 索引流：按掩码顺序（行优先自顶向下）填给不透明像素，每像素 1 字节
     for (size_t bit = 0; bit < total; bit++) {
         if (!((out->mask[bit >> 3] >> (bit & 7)) & 1)) continue;
         if (p >= end) return -2;
-        uint8_t v;
-        if (lo) {
-            v = (uint8_t)(*p & 0x0F);
-            p++;                                          // 低半字节消费完才前进
-        } else {
-            v = (uint8_t)(*p >> 4);
-        }
-        lo = !lo;
+        uint8_t v = *p++;
         if (v == 0) return -4;                            // index0 = 透明，不应出现在索引流
         out->idx[bit] = v;
     }

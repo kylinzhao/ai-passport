@@ -1,4 +1,4 @@
-// tests/test_zcp_zpf.c —— ZPF1 解码主机测试：解码仓库内全部 12 个已提交帧包的
+// tests/test_zcp_zpf.c —— ZPF2 解码主机测试：解码仓库内全部 12 个已提交帧包的
 // 全部帧（消费方独立校验烘焙产物，烘焙端另有回绕/结构自检）。
 // 跑法见 tools/validate.sh --static：cc -Imain tests/test_zcp_zpf.c main/zcp_zpf.c
 // （工作目录 = 仓库根，路径按 CMakeLists EMBED_FILES 的 12 个文件逐个打开）
@@ -61,7 +61,7 @@ static void test_clip(int clip) {
         for (size_t i = 0; i < sizeof(fr.idx); i++) {
             if (zcp_zpf_mask_get(&fr, (uint16_t)(i % ZCP_ZPF_WIDTH), (uint16_t)(i / ZCP_ZPF_WIDTH))) {
                 opaque++;
-                assert(fr.idx[i] >= 1 && fr.idx[i] <= 15);
+                assert(fr.idx[i] >= 1 && fr.idx[i] <= 31);
             }
         }
         assert(opaque > 0);                            // 每帧都有可见内容

@@ -18,8 +18,8 @@
 
 static const char *TAG = "zcp_pet";
 
-#define PET_W (ZCP_ZPF_WIDTH * 2)                 // 236
-#define PET_H (ZCP_ZPF_HEIGHT * 2)                // 152
+#define PET_W ZCP_ZPF_WIDTH                       // 236（ZPF2 全分辨率，1:1 上屏）
+#define PET_H ZCP_ZPF_HEIGHT                      // 152
 
 // RGB565(0x1A1A1A)：烘焙压平底色，透明像素填它即与页面底色无缝
 #define BG_RGB565 0x18C3
@@ -71,7 +71,7 @@ static const struct {
 
 static lv_obj_t *s_img;
 static zcp_zpf_t s_zpf;                              // 当前 clip
-static zcp_zpf_frame_t s_frame;                      // 当前帧解码结果（约 10KB 静态）
+static zcp_zpf_frame_t s_frame;                      // 当前帧解码结果（约 40KB 静态）
 static uint16_t s_up[PET_W * PET_H];                 // 2× 上采样 RGB565（约 70KB 静态）
 static lv_image_dsc_t s_img_dsc;
 static uint16_t s_frame_idx;
@@ -103,20 +103,15 @@ static bool load_clip(int clip_id) {
     return true;
 }
 
-// 解码当前帧并 2× 最近邻展开进 s_up
+// 解码当前帧 1:1 写进 s_up（ZPF2 全分辨率直出，无上采样）
 static void expand_current_frame(void) {
     const uint16_t *pal = s_zpf.palette;
     for (int y = 0; y < ZCP_ZPF_HEIGHT; y++) {
         const uint8_t *idx_row = s_frame.idx + (size_t)y * ZCP_ZPF_WIDTH;
-        uint16_t *dst0 = s_up + (size_t)y * 2 * PET_W;
-        uint16_t *dst1 = dst0 + PET_W;
+        uint16_t *dst = s_up + (size_t)y * PET_W;
         for (int x = 0; x < ZCP_ZPF_WIDTH; x++) {
-            uint16_t c = zcp_zpf_mask_get(&s_frame, (uint16_t)x, (uint16_t)y)
-                             ? pal[idx_row[x]] : (uint16_t)BG_RGB565;
-            dst0[x * 2] = c;
-            dst0[x * 2 + 1] = c;
-            dst1[x * 2] = c;
-            dst1[x * 2 + 1] = c;
+            // idx==0 ⟺ 透明（解码器保证：透明像素 memset 为 0，索引流拒收 0）
+            dst[x] = idx_row[x] ? pal[idx_row[x]] : (uint16_t)BG_RGB565;
         }
     }
 }

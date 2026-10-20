@@ -14,10 +14,10 @@ zcode-pet 守护进程（Mac）                  ESP32-C3 设备（本固件）
 │  (mode/tier/run/unread/mid)            │   · GATT 服务 5A1C0001-…，TX notify / RX write
 ├─ DeviceBridge.swift（CoreBluetooth     │   · status → 镜像 + ACK，10s 看门狗
 │  中心：扫描 → 连接 → 订阅）            │   · hello 每 5s；OK 键 → read notify
-│  · status 每 2s（write-with-response， ├─ zcp_pet.c      ZPF1 解码 + 2× 上采样 → lv_image @ 8fps
+│  · status 每 2s（write-with-response， ├─ zcp_pet.c      ZPF2 解码 + 1:1 上屏 → lv_image @ 8fps
 │    preferred MTU 256）                 ├─ zcp_app.c      Boot/Pet/About 页 + 浮层 + 按键
 │  · read 消息 → 桌面已读路径            └─ zcp_strings.c  闭集文案表
-└─ --export-esp32 离线烘焙 ZPF1 clip（入库本仓库）
+└─ --export-esp32 离线烘焙 ZPF2 clip（入库本仓库）
 ```
 
 语义源：守护进程的 `PetDisplayState` 快照同时喂桌面宠物文案与 BLE `status` 消息，设备文案与 Mac 文案是同一来源的两个投影。`mid` 字段兼任设备端动画/文案选择器。
@@ -55,9 +55,9 @@ zcode-pet 守护进程（Mac）                  ESP32-C3 设备（本固件）
 
 About 页显示设备名 + 固件版本、CW2017 电量（电量计缺席显示 `?`）与按键提示。没有配网页：BLE 无需凭据。UDP 草案里的 Config 页与 `zcp_provision` 已整体移除。
 
-## 动画帧（ZPF1）
+## 动画帧（ZPF2）
 
-每一帧都由桌面矢量引擎离线烘焙——零手绘、零 AI 生图。12 段锁相循环 clip（`ball-*.zpf`，118×76 @ 8fps，348 帧，约 0.32MB）经 `EMBED_FILES` 嵌入，解码后 2× 上采样进静态 RGB565 缓冲（236×152，约 70KB 内部 RAM），经 `lv_image` 变量源渲染。格式：`ZPF1` 头、固定 16 色 RGB565 调色板（index0 透明占位、index15 = 压平底色）、逐帧 `u32` 长度 + 1bpp 透明掩码 RLE + 4bpp 调色板索引。半透明像素压平到 `#1A1A1A`（RGB565 `0x18C3`）；宠物页底色必须同色（`ZCP_BG_HEX`）。
+每一帧都由桌面矢量引擎离线烘焙——零手绘、零 AI 生图。12 段锁相循环 clip（`ball-*.zpf`，236×152 @ 8fps，348 帧，约 2.3MB）经 `EMBED_FILES` 嵌入，解码后 1:1 写进静态 RGB565 缓冲（236×152，约 70KB 内部 RAM），经 `lv_image` 变量源渲染。格式：`ZPF2` 头、固定 32 色 RGB565 调色板（index0 透明占位、index31 = 压平底色）、逐帧 `u32` 长度 + 1bpp 透明掩码 RLE + 8bpp 调色板索引；烘焙量化带 4×4 Bayer 抖动。半透明像素压平到 `#1A1A1A`（RGB565 `0x18C3`）；宠物页底色必须同色（`ZCP_BG_HEX`）。
 
 形象级缺口（方案内声明，语义由文案承载）：不耐烦沿用 working 帧 + 「任务跑了好久了」文案；连击庆祝沿用 celebrate clip + 连击文案；拎起姿态无设备场景。
 
