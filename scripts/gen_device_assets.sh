@@ -81,6 +81,18 @@ my %alias = (
     battfmt      => 'batt_fmt',
     blefailfmt   => 'ble_fail_fmt',
     blerescue    => 'ble_rescue',
+    topbarbattfmt=> 'topbar_batt_fmt',
+    taskstitle   => 'tasks_title',
+    taskempty    => 'task_empty',
+    taskst0      => 'task_st0',
+    taskst1      => 'task_st1',
+    taskst2      => 'task_st2',
+    taskst3      => 'task_st3',
+    listhint     => 'list_hint',
+    detailhint   => 'detail_hint',
+    gosent       => 'go_sent',
+    readok       => 'read_ok',
+    unreadmark   => 'unread_mark',
 );
 
 open my $in, '<', $src or die "读不到 $src: $!";
@@ -155,6 +167,18 @@ extern const char *zcp_str_about_hint;
 extern const char *zcp_str_batt_fmt;
 extern const char *zcp_str_ble_fail_fmt;
 extern const char *zcp_str_ble_rescue;
+extern const char *zcp_str_topbar_batt_fmt;
+extern const char *zcp_str_tasks_title;
+extern const char *zcp_str_task_empty;
+extern const char *zcp_str_task_st0;
+extern const char *zcp_str_task_st1;
+extern const char *zcp_str_task_st2;
+extern const char *zcp_str_task_st3;
+extern const char *zcp_str_list_hint;
+extern const char *zcp_str_detail_hint;
+extern const char *zcp_str_go_sent;
+extern const char *zcp_str_read_ok;
+extern const char *zcp_str_unread_mark;
 
 #ifdef __cplusplus
 }

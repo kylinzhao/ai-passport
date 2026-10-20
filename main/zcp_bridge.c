@@ -55,7 +55,16 @@ static const ble_uuid128_t s_rx_uuid = ZCP_UUID128_INIT(0x03);
 
 static SemaphoreHandle_t s_lock;
 static zcp_pet_state_t s_state;              // 镜像快照（s_lock）
+static zcp_tasks_t s_tasks;                  // 任务列表镜像（s_lock）
 static int64_t s_last_status_us;             // 最近 status 时刻（esp_timer 时钟）
+
+void zcp_bridge_get_tasks(zcp_tasks_t *out) {
+    if (!out) return;
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) == pdTRUE) {
+        *out = s_tasks;
+        xSemaphoreGive(s_lock);
+    }
+}
 
 void zcp_bridge_get_state(zcp_pet_state_t *out) {
     if (!out) return;
@@ -167,6 +176,22 @@ void zcp_bridge_send_read(void) {
     ESP_LOGI(TAG, "read 已 notify");
 }
 
+void zcp_bridge_send_read_task(uint8_t idx, uint16_t lv) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "{\"v\":1,\"t\":\"read\",\"i\":%u,\"lv\":%u}",
+             (unsigned)idx, (unsigned)lv);
+    send_notify_json(buf);
+    ESP_LOGI(TAG, "read(i=%u,lv=%u) 已 notify", idx, lv);
+}
+
+void zcp_bridge_send_go(uint8_t idx, uint16_t lv) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "{\"v\":1,\"t\":\"go\",\"i\":%u,\"lv\":%u}",
+             (unsigned)idx, (unsigned)lv);
+    send_notify_json(buf);
+    ESP_LOGI(TAG, "go(i=%u,lv=%u) 已 notify", idx, lv);
+}
+
 // ---- status 解析（RX write；host task 上下文，只碰锁不碰 LVGL）----
 
 static void handle_status(cJSON *obj) {
@@ -213,6 +238,44 @@ static void handle_status(cJSON *obj) {
     send_notify_json(ack);
 }
 
+// tasks 解析（全量推送；host task 上下文）
+static void handle_tasks(cJSON *obj) {
+    zcp_tasks_t t;
+    memset(&t, 0, sizeof(t));
+    cJSON *item;
+    if ((item = cJSON_GetObjectItem(obj, "lv")) && cJSON_IsNumber(item))
+        t.lv = (uint16_t)item->valuedouble;
+    cJSON *items = cJSON_GetObjectItem(obj, "items");
+    if (cJSON_IsArray(items)) {
+        cJSON *e;
+        cJSON_ArrayForEach(e, items) {
+            if (t.count >= ZCP_TASKS_MAX) break;
+            cJSON *f;
+            uint8_t st = ZCP_TASK_ST_OTHER;
+            if ((f = cJSON_GetObjectItem(e, "s")) && cJSON_IsNumber(f))
+                st = (uint8_t)f->valuedouble;
+            bool unread = false;
+            if ((f = cJSON_GetObjectItem(e, "u")) && cJSON_IsNumber(f))
+                unread = f->valuedouble != 0;
+            const char *title = cJSON_GetStringValue(cJSON_GetObjectItem(e, "t"));
+            if (title && title[0]) {
+                strncpy(t.title[t.count], title, ZCP_TASK_TITLE_MAX - 1);
+                t.status[t.count] = st <= ZCP_TASK_ST_ERROR ? st : ZCP_TASK_ST_OTHER;
+                t.unread[t.count] = unread;
+                t.count++;
+            }
+        }
+    }
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) == pdTRUE) {
+        uint8_t sel = s_tasks.sel;                  // 选择不因推送重置
+        bool keep_sel = sel < t.count;
+        s_tasks = t;
+        s_tasks.sel = keep_sel ? sel : 0;
+        xSemaphoreGive(s_lock);
+    }
+    ESP_LOGI(TAG, "tasks lv=%u count=%u 已镜像", t.lv, t.count);
+}
+
 // Mac→设备写 RX：NimBLE 已按 ATT long write 重装完整 buffer（preferred MTU 256，
 // 更小 MTU 时 Prepare/Execute 自动分块），这里拿到的 om 链即完整 status 帧。
 static int rx_access_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -236,6 +299,9 @@ static int rx_access_cb(uint16_t conn_handle, uint16_t attr_handle,
     if (cJSON_IsNumber(v) && (int)v->valuedouble == ZCP_PROTO_VERSION &&
         cJSON_IsString(t) && strcmp(t->valuestring, "status") == 0) {
         handle_status(obj);
+    } else if (cJSON_IsNumber(v) && (int)v->valuedouble == ZCP_PROTO_VERSION &&
+               cJSON_IsString(t) && strcmp(t->valuestring, "tasks") == 0) {
+        handle_tasks(obj);
     }
     // 其它类型（hello/read 是设备发的，Mac 不发；未知类型忽略）
     cJSON_Delete(obj);
@@ -327,7 +393,8 @@ int gap_event_cb(struct ble_gap_event *event, void *arg) {
         return 0;
     case BLE_GAP_EVENT_SUBSCRIBE:
         if (event->subscribe.attr_handle == s_tx_handle && event->subscribe.cur_notify) {
-            ESP_LOGI(TAG, "Mac 已订阅 TX notify");
+            ESP_LOGI(TAG, "Mac 已订阅 TX notify，请求任务列表");
+            send_notify_json("{\"v\":1,\"t\":\"gettasks\"}");
         }
         return 0;
     case BLE_GAP_EVENT_MTU:

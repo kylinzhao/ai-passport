@@ -47,3 +47,17 @@ zcp_link_state_t zcp_link_state(bool ble_ready, bool gatt_connected, int64_t las
 bool zcp_wait_diag_due(int64_t waiting_age_ms) {
     return waiting_age_ms >= ZCP_WAIT_DIAG_MS;
 }
+
+// ---- 任务列表镜像（纯逻辑，主机可测） ----
+
+void zcp_tasks_move(zcp_tasks_t *t, int dir) {
+    if (!t || t->count == 0) return;
+    int n = (int)t->sel + (dir > 0 ? 1 : -1);
+    if (n < 0) n = (int)t->count - 1;
+    if (n >= (int)t->count) n = 0;
+    t->sel = (uint8_t)n;
+}
+
+void zcp_tasks_mark_read(zcp_tasks_t *t, uint8_t idx) {
+    if (t && idx < t->count) t->unread[idx] = false;
+}

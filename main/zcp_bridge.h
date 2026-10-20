@@ -21,7 +21,13 @@
 //           "tier":0..3,"run":N,"unread":N,"mid":M,"n":可选数字,"ts":毫秒}
 //          mode/tier/run/unread/mid/n 全部来自 PetDisplayState 快照（与宠物文案同源）
 //   ack    设备→Mac notify {"v":1,"t":"ack","seq":N}（回执最近一次收到的 status）
-//   read   设备→Mac notify {"v":1,"t":"read"}（OK 键 = 已读确认，走 ReadWatermark 水位）
+//   read   设备→Mac notify {"v":1,"t":"read"}（已读确认；带 i/lv = 任务列表里第 i 项逐任务已读，
+//          无 i = 全部已读水位，v1.7 语义向后兼容）
+//   tasks  Mac→设备 write RX（连接建立/任务集变化时推送）
+//          {"v":1,"t":"tasks","lv":N,"items":[{"s":0..3,"u":0|1,"t":"标题≤12字"},...]}
+//          items 下标即任务 i（0..7）；s: 0空闲 1运行 2完成 3出错；u=1 未读
+//   gettasks 设备→Mac notify {"v":1,"t":"gettasks"}（Mac 订阅 TX 后请求一次全量）
+//   go      设备→Mac notify {"v":1,"t":"go","i":N,"lv":N}（详情页长按 = 在 Mac 打开该任务工作区）
 #pragma once
 
 #include <stdbool.h>
@@ -55,8 +61,15 @@ void zcp_bridge_restart(void);            // 重启 BLE 栈（stop→deinit→in
 // 主动断开当前 GATT 连接并重启广播（Pet 页非 ONLINE 时 OK 键的「蓝牙救援」）
 void zcp_bridge_drop_peer(void);
 
-// 设备 → Mac：已读确认（OK 键触发，notify {"v":1,"t":"read"}）
+// 设备 → Mac：已读确认（Pet 页 OK=全部已读水位；详情页带任务下标）
 void zcp_bridge_send_read(void);
+void zcp_bridge_send_read_task(uint8_t idx, uint16_t lv);
+
+// 设备 → Mac：详情页「继续」（Mac 打开该任务的工作区）
+void zcp_bridge_send_go(uint8_t idx, uint16_t lv);
+
+// 任务列表镜像快照（锁内拷贝；从未收到 tasks 时 count=0）
+void zcp_bridge_get_tasks(zcp_tasks_t *out);
 
 #ifdef __cplusplus
 }

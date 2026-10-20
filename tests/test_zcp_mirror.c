@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_clip_for_mid(void) {
     // idle 子态：deep > aftermath > drowsy > idle（与桌面 update() 判定顺序同源的镜像结果）
@@ -63,7 +64,28 @@ static void test_wait_diag(void) {
     assert(zcp_wait_diag_due(120000));
 }
 
+static void test_tasks_move(void) {
+    zcp_tasks_t tk;
+    memset(&tk, 0, sizeof(tk));
+    zcp_tasks_move(&tk, 1);                    // count=0 不动
+    assert(tk.sel == 0);
+    tk.count = 3;
+    tk.sel = 0;
+    zcp_tasks_move(&tk, -1);                   // 环绕到末尾
+    assert(tk.sel == 2);
+    zcp_tasks_move(&tk, 1);                    // 2→0 环绕
+    assert(tk.sel == 0);
+    zcp_tasks_move(&tk, 1);
+    assert(tk.sel == 1);
+    tk.unread[1] = true;
+    zcp_tasks_mark_read(&tk, 1);
+    assert(!tk.unread[1]);
+    zcp_tasks_mark_read(&tk, 5);               // 越界安全
+    printf("test_tasks_move: PASS\n");
+}
+
 int main(void) {
+    test_tasks_move();
     test_clip_for_mid();
     test_mid_valid();
     test_link_state();

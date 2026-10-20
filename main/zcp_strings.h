@@ -22,6 +22,18 @@ extern const char *zcp_str_about_hint;
 extern const char *zcp_str_batt_fmt;
 extern const char *zcp_str_ble_fail_fmt;
 extern const char *zcp_str_ble_rescue;
+extern const char *zcp_str_topbar_batt_fmt;
+extern const char *zcp_str_tasks_title;
+extern const char *zcp_str_task_empty;
+extern const char *zcp_str_task_st0;
+extern const char *zcp_str_task_st1;
+extern const char *zcp_str_task_st2;
+extern const char *zcp_str_task_st3;
+extern const char *zcp_str_list_hint;
+extern const char *zcp_str_detail_hint;
+extern const char *zcp_str_go_sent;
+extern const char *zcp_str_read_ok;
+extern const char *zcp_str_unread_mark;
 
 #ifdef __cplusplus
 }

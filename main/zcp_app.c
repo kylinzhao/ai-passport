@@ -46,6 +46,8 @@ typedef enum {
     PAGE_BOOT = 0,
     PAGE_PET,
     PAGE_ABOUT,
+    PAGE_TASKS,
+    PAGE_DETAIL,
 } page_t;
 
 LV_FONT_DECLARE(zcp_font_16);
@@ -62,6 +64,10 @@ static lv_obj_t *s_pet_box;
 static lv_obj_t *s_topbar, *s_caption, *s_subline, *s_diag;
 static lv_obj_t *s_about_box, *s_about_title, *s_about_name, *s_about_batt, *s_about_hint;
 static lv_obj_t *s_list_box, *s_list_label;
+static lv_obj_t *s_tasks_box, *s_tasks_title, *s_tasks_rows[ZCP_TASKS_MAX], *s_tasks_hint;
+static lv_obj_t *s_detail_box, *s_detail_title, *s_detail_status, *s_detail_toast, *s_detail_hint;
+static zcp_tasks_t s_tasks_view;                 // 页面渲染用的本地快照（state_timer 刷新）
+static int64_t s_toast_until_ms;                 // 详情页提示文案截止时刻
 
 static page_t s_page = PAGE_BOOT;
 static bool s_list_open;
@@ -74,6 +80,8 @@ static bool s_ever_online;                           // 本次开机曾收到 st
 static bool s_batt_available;                        // CW2017 在位（main.c 探测）
 
 static void refresh_about_batt(void);
+static void refresh_tasks_page(void);
+static void refresh_detail_page(void);
 
 // ---- 小工具 ----
 
@@ -94,6 +102,17 @@ static void show_page(page_t page) {
     } else {
         lv_obj_add_flag(s_about_box, LV_OBJ_FLAG_HIDDEN);
     }
+    if (page == PAGE_TASKS) {
+        zcp_bridge_get_tasks(&s_tasks_view);
+        refresh_tasks_page();
+    } else {
+        lv_obj_add_flag(s_tasks_box, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (page == PAGE_DETAIL) {
+        refresh_detail_page();
+    } else {
+        lv_obj_add_flag(s_detail_box, LV_OBJ_FLAG_HIDDEN);
+    }
     if (page != PAGE_PET) {
         lv_obj_add_flag(s_list_box, LV_OBJ_FLAG_HIDDEN);
         s_list_open = false;
@@ -103,9 +122,21 @@ static void show_page(page_t page) {
 
 // ---- 文案组装（数字模板：CJK 用子集字体，数字走 Montserrat fallback）----
 
-static void set_caption_mid(int mid) {
+// mid 7/8（%d 个任务并行/忙翻）需要把 status 帧里的 n 代入模板
+static void set_caption_mid_n(int mid, int n) {
     const char *text = zcp_mid_text(mid);
-    lv_label_set_text(s_caption, text ? text : "");
+    if (!text) { lv_label_set_text(s_caption, ""); return; }
+    if (n >= 0 && strchr(text, '%')) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), text, (unsigned)n);
+        lv_label_set_text(s_caption, buf);
+    } else {
+        lv_label_set_text(s_caption, text);
+    }
+}
+
+static void set_caption_mid(int mid) {
+    set_caption_mid_n(mid, -1);
 }
 
 static void list_show(bool open) {
@@ -189,9 +220,15 @@ static void refresh_pet_page(void) {
     case ZCP_LINK_ONLINE: {
         zcp_pet_state_t st;
         zcp_bridge_get_state(&st);
-        set_caption_mid(st.mid);
-        snprintf(buf, sizeof(buf), zcp_str_topbar_fmt,
-                 (unsigned)st.run, (unsigned)st.unread);
+        set_caption_mid_n(st.mid, st.has_n ? (int)st.n : -1);
+        int soc = s_batt_available ? bsp_battery_soc() : -1;
+        if (soc >= 0) {
+            snprintf(buf, sizeof(buf), zcp_str_topbar_batt_fmt,
+                     (unsigned)st.run, (unsigned)st.unread, (unsigned)soc);
+        } else {
+            snprintf(buf, sizeof(buf), zcp_str_topbar_fmt,
+                     (unsigned)st.run, (unsigned)st.unread);
+        }
         lv_label_set_text(s_topbar, buf);
         lv_label_set_text(s_subline, "");
         lv_label_set_text(s_diag, "");
@@ -209,6 +246,11 @@ static void state_timer_cb(lv_timer_t *t) {
     (void)t;
     if (s_page == PAGE_PET) refresh_pet_page();
     if (s_page == PAGE_ABOUT) refresh_about_batt();
+    if (s_page == PAGE_TASKS || s_page == PAGE_DETAIL) {
+        zcp_bridge_get_tasks(&s_tasks_view);   // 推送到达后下一拍自动刷新
+        if (s_page == PAGE_TASKS) refresh_tasks_page();
+        else refresh_detail_page();
+    }
     // NimBLE 连续失败（≥3 次）：30s 定时自动重试
     if (zcp_bridge_ble_retry_due(esp_timer_get_time() / 1000)) {
         ESP_LOGW(TAG, "BLE 连续失败，30s 定时自动重试");
@@ -225,6 +267,55 @@ static void boot_timer_cb(lv_timer_t *t) {
     (void)t;
     if (s_page != PAGE_BOOT) return;
     show_page(PAGE_PET);
+}
+
+// ---- 任务列表页 / 详情页 ----
+
+static const char *task_status_text(uint8_t st) {
+    switch (st) {
+    case ZCP_TASK_ST_RUNNING: return zcp_str_task_st1;
+    case ZCP_TASK_ST_DONE:    return zcp_str_task_st2;
+    case ZCP_TASK_ST_ERROR:   return zcp_str_task_st3;
+    default:                  return zcp_str_task_st0;
+    }
+}
+
+static void refresh_tasks_page(void) {
+    if (s_tasks_view.count == 0) {
+        lv_label_set_text(s_tasks_title, zcp_str_tasks_title);
+        lv_label_set_text(s_tasks_rows[0], zcp_str_task_empty);
+        lv_obj_set_style_text_color(s_tasks_rows[0], lv_color_hex(COL_DIM), 0);
+        for (int i = 1; i < ZCP_TASKS_MAX; i++) lv_label_set_text(s_tasks_rows[i], "");
+        return;
+    }
+    for (int i = 0; i < ZCP_TASKS_MAX; i++) {
+        if (i < (int)s_tasks_view.count) {
+            char buf[ZCP_TASK_TITLE_MAX + 8];
+            snprintf(buf, sizeof(buf), "%s%s",
+                     s_tasks_view.unread[i] ? zcp_str_unread_mark : " ",
+                     s_tasks_view.title[i]);
+            lv_label_set_text(s_tasks_rows[i], buf);
+            lv_obj_set_style_text_color(s_tasks_rows[i],
+                lv_color_hex(i == (int)s_tasks_view.sel ? COL_ACCENT : COL_INK), 0);
+        } else {
+            lv_label_set_text(s_tasks_rows[i], "");
+        }
+    }
+}
+
+static void refresh_detail_page(void) {
+    if (s_tasks_view.sel >= s_tasks_view.count) return;
+    uint8_t i = s_tasks_view.sel;
+    lv_label_set_text(s_detail_title, s_tasks_view.title[i]);
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%s%s%s",
+             task_status_text(s_tasks_view.status[i]),
+             s_tasks_view.unread[i] ? zcp_str_unread_mark : "",
+             s_tasks_view.status[i] == ZCP_TASK_ST_RUNNING ? "" : "");
+    lv_label_set_text(s_detail_status, buf);
+    if (s_toast_until_ms == 0 || esp_timer_get_time() / 1000 > s_toast_until_ms) {
+        lv_label_set_text(s_detail_toast, "");
+    }
 }
 
 // ---- About 页 ----
@@ -263,6 +354,46 @@ static void handle_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
         return;
     }
 
+    // 任务列表页：上下选择，OK 详情，OK 长按退出
+    if (s_page == PAGE_TASKS) {
+        if (ev == BSP_BTN_CLICK && btn == BSP_BTN_UP) {
+            zcp_tasks_move(&s_tasks_view, -1);
+            refresh_tasks_page();
+        } else if (ev == BSP_BTN_CLICK && btn == BSP_BTN_DOWN) {
+            zcp_tasks_move(&s_tasks_view, 1);
+            refresh_tasks_page();
+        } else if (ev == BSP_BTN_CLICK && btn == BSP_BTN_OK) {
+            if (s_tasks_view.count > 0) show_page(PAGE_DETAIL);
+        } else if (ev == BSP_BTN_LONG && btn == BSP_BTN_OK) {
+            show_page(PAGE_PET);
+        }
+        return;
+    }
+
+    // 详情页：OK 已读该任务，OK 长按在 Mac 打开（继续），上返回
+    if (s_page == PAGE_DETAIL) {
+        if (ev == BSP_BTN_CLICK && btn == BSP_BTN_UP) {
+            show_page(PAGE_TASKS);
+        } else if (ev == BSP_BTN_CLICK && btn == BSP_BTN_OK) {
+            if (s_tasks_view.sel < s_tasks_view.count) {
+                zcp_bridge_send_read_task(s_tasks_view.sel, s_tasks_view.lv);
+                zcp_tasks_mark_read(&s_tasks_view, s_tasks_view.sel);
+                lv_label_set_text(s_detail_toast, zcp_str_read_ok);
+                s_toast_until_ms = esp_timer_get_time() / 1000 + 1500;
+                refresh_detail_page();
+            }
+        } else if (ev == BSP_BTN_LONG && btn == BSP_BTN_OK) {
+            if (s_tasks_view.sel < s_tasks_view.count) {
+                zcp_bridge_send_go(s_tasks_view.sel, s_tasks_view.lv);
+                lv_label_set_text(s_detail_toast, zcp_str_go_sent);
+                s_toast_until_ms = esp_timer_get_time() / 1000 + 1500;
+            }
+        } else if (ev == BSP_BTN_CLICK && btn == BSP_BTN_DOWN) {
+            // 下键在详情页无操作（保留给未来）
+        }
+        return;
+    }
+
     switch (btn) {
     case BSP_BTN_UP:
         if (ev == BSP_BTN_CLICK) {
@@ -284,7 +415,7 @@ static void handle_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
             if (zcp_bridge_ble_last_err() != 0) {
                 zcp_bridge_restart();                  // BLE 失败 → OK=重试
             } else if (s_last_link == ZCP_LINK_ONLINE) {
-                zcp_bridge_send_read();                // 已读确认 → Mac 走水位/跳转路径
+                show_page(PAGE_TASKS);                 // v1.8：OK = 任务列表（逐任务已读在详情页）
             } else {
                 zcp_bridge_drop_peer();                // 非 ONLINE → 蓝牙救援（断 GATT 回广播）
             }
@@ -358,6 +489,34 @@ void zcp_app_start(void) {
     label_style(s_about_hint, lv_color_hex(COL_DIM), &s_font_cjk);
     lv_label_set_text(s_about_hint, zcp_str_about_hint);
     lv_obj_add_flag(s_about_box, LV_OBJ_FLAG_HIDDEN);
+
+    // 任务列表页（8 行静态 label，选中行高亮橙色，未读前缀 ●）
+    s_tasks_box = lv_obj_create(s_scr);
+    lv_obj_remove_style_all(s_tasks_box);
+    lv_obj_set_size(s_tasks_box, BSP_LCD_W, BSP_LCD_H);
+    s_tasks_title = make_label(s_tasks_box, LV_ALIGN_TOP_MID, 0, 8, lv_color_hex(COL_ACCENT), &s_font_cjk);
+    lv_label_set_text(s_tasks_title, zcp_str_tasks_title);
+    for (int i = 0; i < ZCP_TASKS_MAX; i++) {
+        s_tasks_rows[i] = make_label(s_tasks_box, LV_ALIGN_TOP_LEFT, 12, 40 + i * 28,
+                                     lv_color_hex(COL_INK), &s_font_cjk);
+        lv_label_set_text(s_tasks_rows[i], "");
+    }
+    s_tasks_hint = make_label(s_tasks_box, LV_ALIGN_TOP_MID, 0, 296, lv_color_hex(COL_DIM), &s_font_cjk);
+    lv_label_set_text(s_tasks_hint, zcp_str_list_hint);
+    lv_obj_add_flag(s_tasks_box, LV_OBJ_FLAG_HIDDEN);
+
+    // 任务详情页：标题（自动换行）+ 状态 + 提示 + 底部操作栏
+    s_detail_box = lv_obj_create(s_scr);
+    lv_obj_remove_style_all(s_detail_box);
+    lv_obj_set_size(s_detail_box, BSP_LCD_W, BSP_LCD_H);
+    s_detail_title = make_label(s_detail_box, LV_ALIGN_TOP_LEFT, 12, 40, lv_color_hex(COL_INK), &s_font_cjk);
+    lv_label_set_long_mode(s_detail_title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_detail_title, BSP_LCD_W - 24);
+    s_detail_status = make_label(s_detail_box, LV_ALIGN_TOP_LEFT, 12, 170, lv_color_hex(COL_DIM), &s_font_cjk);
+    s_detail_toast = make_label(s_detail_box, LV_ALIGN_TOP_MID, 0, 210, lv_color_hex(COL_ACCENT), &s_font_cjk);
+    s_detail_hint = make_label(s_detail_box, LV_ALIGN_TOP_MID, 0, 296, lv_color_hex(COL_DIM), &s_font_cjk);
+    lv_label_set_text(s_detail_hint, zcp_str_detail_hint);
+    lv_obj_add_flag(s_detail_box, LV_OBJ_FLAG_HIDDEN);
 
     // 任务清单浮层
     s_list_box = lv_obj_create(s_scr);

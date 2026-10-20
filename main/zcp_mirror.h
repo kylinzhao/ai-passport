@@ -85,6 +85,28 @@ zcp_link_state_t zcp_link_state(bool ble_ready, bool gatt_connected, int64_t las
 #define ZCP_WAIT_DIAG_MS 60000
 bool zcp_wait_diag_due(int64_t waiting_age_ms);
 
+// ---- 任务列表镜像（tasks 消息；Mac 每次全量推送，lv 版本号递增） ----
+
+#define ZCP_TASKS_MAX 8
+#define ZCP_TASK_TITLE_MAX 44   // 字节（UTF-8，约 14 个汉字）
+
+// 任务状态（协议 s 字段：0 空闲/其他 1 运行 2 完成 3 出错）
+enum { ZCP_TASK_ST_OTHER = 0, ZCP_TASK_ST_RUNNING = 1, ZCP_TASK_ST_DONE = 2, ZCP_TASK_ST_ERROR = 3 };
+
+typedef struct {
+    uint16_t lv;                                    // 列表版本（read/go 回传校验）
+    uint8_t count;                                  // 0..ZCP_TASKS_MAX
+    uint8_t sel;                                    // UI 选择下标（< count）
+    char title[ZCP_TASKS_MAX][ZCP_TASK_TITLE_MAX];  // UTF-8，NUL 结尾
+    uint8_t status[ZCP_TASKS_MAX];                  // ZCP_TASK_ST_*
+    bool unread[ZCP_TASKS_MAX];
+} zcp_tasks_t;
+
+// 选择移动（dir=-1/+1，count 内环绕；count=0 不动）
+void zcp_tasks_move(zcp_tasks_t *t, int dir);
+// 本地清未读标记（详情页 OK 已读后的即时反馈，等 Mac 下一帧 tasks 校准）
+void zcp_tasks_mark_read(zcp_tasks_t *t, uint8_t idx);
+
 #ifdef __cplusplus
 }
 #endif
