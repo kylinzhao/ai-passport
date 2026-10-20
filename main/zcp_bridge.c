@@ -184,6 +184,17 @@ void zcp_bridge_send_read_task(uint8_t idx, uint16_t lv) {
     ESP_LOGI(TAG, "read(i=%u,lv=%u) 已 notify", idx, lv);
 }
 
+void zcp_bridge_send_gettasks(void) {
+    // 诊断：notify 结果（rc!=0 = 未连接/未订阅，静默丢失是重连场景任务列表空的元凶候选）
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || s_tx_handle == 0) {
+        ESP_LOGW(TAG, "gettasks 丢弃：未连接/无TX handle");
+        return;
+    }
+    struct os_mbuf *om = ble_hs_mbuf_from_flat("{\"v\":1,\"t\":\"gettasks\"}", 22);
+    int rc = om ? ble_gatts_notify_custom(s_conn_handle, s_tx_handle, om) : BLE_HS_ENOMEM;
+    if (rc != 0) ESP_LOGW(TAG, "gettasks notify rc=%d", rc);
+}
+
 void zcp_bridge_send_go(uint8_t idx, uint16_t lv) {
     char buf[48];
     snprintf(buf, sizeof(buf), "{\"v\":1,\"t\":\"go\",\"i\":%u,\"lv\":%u}",

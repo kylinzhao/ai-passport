@@ -68,6 +68,9 @@ void zcp_bridge_send_read_task(uint8_t idx, uint16_t lv);
 // 设备 → Mac：详情页「继续」（Mac 打开该任务的工作区）
 void zcp_bridge_send_go(uint8_t idx, uint16_t lv);
 
+// 设备 → Mac：请求全量任务列表（订阅时自动发；任务页空列表时周期重发）
+void zcp_bridge_send_gettasks(void);
+
 // 任务列表镜像快照（锁内拷贝；从未收到 tasks 时 count=0）
 void zcp_bridge_get_tasks(zcp_tasks_t *out);
 

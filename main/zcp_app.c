@@ -253,6 +253,14 @@ static void state_timer_cb(lv_timer_t *t) {
         zcp_bridge_get_tasks(&s_tasks_view);   // 推送到达后下一拍自动刷新
         if (s_page == PAGE_TASKS) refresh_tasks_page();
         else refresh_detail_page();
+        if (s_tasks_view.count == 0) {         // 空列表：周期向 Mac 重发 gettasks
+            static int64_t s_last_req_ms;
+            int64_t now_ms = esp_timer_get_time() / 1000;
+            if (now_ms - s_last_req_ms >= 5000) {
+                s_last_req_ms = now_ms;
+                zcp_bridge_send_gettasks();
+            }
+        }
     }
     // NimBLE 连续失败（≥3 次）：30s 定时自动重试
     if (zcp_bridge_ble_retry_due(esp_timer_get_time() / 1000)) {
