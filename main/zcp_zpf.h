@@ -41,19 +41,11 @@ typedef struct {
 // 校验头并解析常量字段；数据必须在全部生命周期内有效（flash 映射）。0=成功。
 int zcp_zpf_open(zcp_zpf_t *z, const uint8_t *data, size_t size);
 
-// 单帧解码出的位图（调用方提供缓冲）。
-typedef struct {
-    uint8_t mask[ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT / 8];  // 行主序自顶向下，1=不透明
-    uint8_t idx[ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT];       // 不透明像素的调色板索引（按掩码顺序）
-} zcp_zpf_frame_t;
-
-// 解码第 frame_idx 帧；游程与索引经校验。0=成功。
-int zcp_zpf_decode_frame(const zcp_zpf_t *z, uint16_t frame_idx, zcp_zpf_frame_t *out);
-
-static inline bool zcp_zpf_mask_get(const zcp_zpf_frame_t *f, uint16_t x, uint16_t y) {
-    size_t i = (size_t)y * ZCP_ZPF_WIDTH + x;
-    return (f->mask[i >> 3] >> (i & 7)) & 1;
-}
+// 直渲第 frame_idx 帧进调用方提供的 RGB565 缓冲（W×H×2 字节，行优先）：
+// 不透明像素写调色板色，透明像素写 bg。跳过 mask/idx 中间结构——无 PSRAM 的 C3
+// 上省下 ~52KB 内部 RAM（2026-10-20 NimBLE gatts_init 断言排障的根治项）。
+// 游程与索引流经校验，越界/损坏数据返回非 0。0=成功。
+int zcp_zpf_render_frame(const zcp_zpf_t *z, uint16_t frame_idx, uint16_t *dst, uint16_t bg);
 
 #ifdef __cplusplus
 }

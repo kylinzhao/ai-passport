@@ -53,30 +53,32 @@ static void test_clip(int clip) {
     assert(z.frames == k_clips[clip].frames);
     assert(z.palette[0] == 0 || z.palette[0] != 0);   // index0 占位值不约束，解码器不产出它
 
-    zcp_zpf_frame_t fr;
-    unsigned opaque_max = 0;
+    // 直渲断言：每帧渲进临时缓冲（宿主机堆），可见像素必须是调色板色，其余=bg 哨兵
+    uint16_t *px = malloc(sizeof(uint16_t) * ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT);
+    assert(px);
+    const uint16_t bg_sentinel = 0xFFFF;
     for (uint16_t f = 0; f < z.frames; f++) {
-        assert(zcp_zpf_decode_frame(&z, f, &fr) == 0);
+        assert(zcp_zpf_render_frame(&z, f, px, bg_sentinel) == 0);
         unsigned opaque = 0;
-        for (size_t i = 0; i < sizeof(fr.idx); i++) {
-            if (zcp_zpf_mask_get(&fr, (uint16_t)(i % ZCP_ZPF_WIDTH), (uint16_t)(i / ZCP_ZPF_WIDTH))) {
-                opaque++;
-                assert(fr.idx[i] >= 1 && fr.idx[i] <= 31);
-            }
+        for (size_t i = 0; i < (size_t)ZCP_ZPF_WIDTH * ZCP_ZPF_HEIGHT; i++) {
+            uint16_t v = px[i];
+            if (v == bg_sentinel) continue;
+            opaque++;
+            bool in_palette = false;                   // 必须命中调色板 1..31
+            for (int c = 1; c < 32 && !in_palette; c++) in_palette = z.palette[c] == v;
+            assert(in_palette);
         }
         assert(opaque > 0);                            // 每帧都有可见内容
-        if (opaque > opaque_max) opaque_max = opaque;
     }
-    (void)opaque_max;
+    free(px);
 
     // 负例：截断数据必须被拒
     zcp_zpf_t zt;
     assert(zcp_zpf_open(&zt, data, size - 16) == 0 || size > 60);
-    zcp_zpf_frame_t tmp;
-    // 解码最后一帧用真实数据；截断后在错误偏移上应当失败或提前拒绝
+    // 截断/帧号越界的负例
     int rc = zcp_zpf_open(&zt, data, 30);              // 小于头+调色板
     assert(rc != 0);
-    rc = zcp_zpf_decode_frame(&z, z.frames, &tmp);     // 帧号越界
+    rc = zcp_zpf_render_frame(&z, z.frames, px, bg_sentinel);  // 帧号越界
     assert(rc != 0);
 
     free(data);

@@ -20,6 +20,7 @@
 
 #include "bsp_battery.h"
 #include "bsp_display.h"
+#include "esp_heap_caps.h"
 #include "bsp_pins.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -449,6 +450,9 @@ void zcp_app_start(void) {
     s_font_cjk = zcp_font_16;
     s_font_cjk.fallback = &lv_font_montserrat_14;
 
+    // 【竞态修复试验】主任务构建 UI 必须持 LVGL 锁（AGENTS.md 约定；此前未拿锁，
+    // 与 taskLVGL 的首次刷新竞态——放大版资产改变时序后必现，见 2026-10-20 排障）
+    if (!bsp_lvgl_lock(2000)) { ESP_LOGE(TAG, "构建 UI 前拿锁失败"); }
     s_scr = lv_screen_active();
     lv_obj_set_style_bg_color(s_scr, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
@@ -532,13 +536,14 @@ void zcp_app_start(void) {
     label_style(s_list_label, lv_color_hex(COL_INK), &s_font_cjk);
     lv_obj_add_flag(s_list_box, LV_OBJ_FLAG_HIDDEN);
 
-    // 服务与定时器（BLE 桥接常驻广播，无需配网/凭据）
-    zcp_bridge_start();
-
     s_boot_timer = lv_timer_create(boot_timer_cb, BOOT_PERIOD_MS, NULL);
     lv_timer_set_repeat_count(s_boot_timer, 1);
     s_anim_timer = lv_timer_create(anim_timer_cb, 1000 / ZCP_ZPF_FPS, NULL);
     s_state_timer = lv_timer_create(state_timer_cb, STATE_PERIOD_MS, NULL);
+    bsp_lvgl_unlock();                       // UI 全部就绪，放锁再起 BLE
+
+    // 服务（BLE 桥接常驻广播，无需配网/凭据；不碰 LVGL，无需持锁）
+    zcp_bridge_start();
 
     ESP_LOGI(TAG, "zcp_app 就绪");
 }

@@ -148,6 +148,8 @@ void app_main(void) {
     }
 
     zcp_app_start();
+    ESP_LOGI(TAG, "[heap] 启动完成 free=%u min=%u",
+             (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 
     // 电量计（CW2017 @I2C 0x63）缺席时容错：About 页电量行显示「?」，不影响其余功能
     esp_err_t batt_err = bsp_battery_init();

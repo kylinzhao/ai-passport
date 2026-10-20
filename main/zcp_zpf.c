@@ -50,42 +50,47 @@ static int frame_offset(const zcp_zpf_t *z, uint16_t frame_idx, size_t *offset, 
     return -1;
 }
 
-int zcp_zpf_decode_frame(const zcp_zpf_t *z, uint16_t frame_idx, zcp_zpf_frame_t *out) {
-    if (!z || !z->data || !out || frame_idx >= z->frames) return -1;
-    memset(out->mask, 0, sizeof(out->mask));
-    memset(out->idx, 0, sizeof(out->idx));
+int zcp_zpf_render_frame(const zcp_zpf_t *z, uint16_t frame_idx, uint16_t *dst, uint16_t bg) {
+    if (!z || !z->data || !dst || frame_idx >= z->frames) return -1;
 
     size_t off, len;
     int rc = frame_offset(z, frame_idx, &off, &len);
     if (rc != 0) return rc;
-    const uint8_t *p = z->data + off;
-    const uint8_t *end = p + len;
-
-    // 掩码 RLE：游程（bit6..0 = run-1）覆盖全部 W×H 像素
+    const uint8_t *payload = z->data + off;
+    const uint8_t *end = payload + len;
     const size_t total = (size_t)z->w * z->h;
+
+    // 帧内布局：先整段掩码 RLE（每游程 1 字节，覆盖全部像素），后接 8bpp 索引流。
+    // 第一遍只走 RLE 找到索引流起点；第二遍重走 RLE，不透明游程逐像素消费索引。
+    const uint8_t *rle = payload;
+    const uint8_t *p = rle;
     size_t covered = 0;
     while (covered < total) {
         if (p >= end) return -2;
         unsigned run = (unsigned)(*p & 0x7F) + 1;
-        bool opaque_run = (*p & 0x80) != 0;
         p++;
         if (covered + run > total) return -3;             // 游程越界
-        if (opaque_run) {
-            for (unsigned k = 0; k < run; k++) {
-                size_t bit = covered + k;
-                out->mask[bit >> 3] |= (uint8_t)(1u << (bit & 7));
-            }
-        }
         covered += run;
     }
+    const uint8_t *idx = p;
 
-    // 8bpp 索引流：按掩码顺序（行优先自顶向下）填给不透明像素，每像素 1 字节
-    for (size_t bit = 0; bit < total; bit++) {
-        if (!((out->mask[bit >> 3] >> (bit & 7)) & 1)) continue;
-        if (p >= end) return -2;
-        uint8_t v = *p++;
-        if (v == 0) return -4;                            // index0 = 透明，不应出现在索引流
-        out->idx[bit] = v;
+    p = rle;
+    covered = 0;
+    while (covered < total) {
+        unsigned run = (unsigned)(*p & 0x7F) + 1;
+        bool opaque_run = (*p & 0x80) != 0;
+        p++;
+        if (opaque_run) {
+            for (unsigned k = 0; k < run; k++) {
+                if (idx >= end) return -2;                // 索引流不足
+                uint8_t v = *idx++;
+                if (v == 0 || v >= 32) return -4;         // index0=透明占位，不入索引流
+                dst[covered + k] = z->palette[v];
+            }
+        } else {
+            for (unsigned k = 0; k < run; k++) dst[covered + k] = bg;
+        }
+        covered += run;
     }
     return 0;
 }
